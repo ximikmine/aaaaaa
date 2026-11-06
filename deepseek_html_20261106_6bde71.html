@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Jiggle Physics — Unified & Smooth</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; background: #0d0f14;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  #c { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  #c.selecting { cursor: crosshair; }
+
+  #panel {
+    position: fixed; top: 12px; left: 12px; width: 316px;
+    max-height: calc(100% - 24px); overflow-y: auto;
+    padding: 14px; border-radius: 14px;
+    background: rgba(18, 21, 28, .85);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,.09);
+    box-shadow: 0 12px 44px rgba(0,0,0,.6);
+    color: #dfe4ee; font-size: 12.5px; user-select: none;
+  }
+  #panel::-webkit-scrollbar { width: 8px; }
+  #panel::-webkit-scrollbar-thumb { background: #2c3340; border-radius: 8px; }
+
+  #panel h1 {
+    font-size: 13.5px; margin: 0 0 12px; font-weight: 600; letter-spacing: .4px;
+  }
+  #panel h1 em { font-style: normal; color: #ff8fb1; }
+
+  .btnrow { display: flex; gap: 8px; margin-bottom: 8px; }
+  .btn {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 9px 10px; border-radius: 9px; cursor: pointer;
+    background: linear-gradient(180deg, #262d3a, #1c222c);
+    border: 1px solid rgba(255,255,255,.10);
+    color: #e6ebf5; font-size: 12px; font-weight: 500;
+    transition: .15s; text-align: center;
+  }
+  .btn:hover { background: linear-gradient(180deg, #303a4b, #232a36); border-color: #ff8fb1aa; }
+  .btn:active { transform: translateY(1px); }
+  .btn.active {
+    background: linear-gradient(180deg, #ff8fb1, #e56b92);
+    color: #1a1e26; border-color: #ffb8cc;
+    box-shadow: 0 0 16px rgba(255,143,177,.45);
+  }
+  .btn input { display: none; }
+
+  .sep { height: 1px; background: rgba(255,255,255,.08); margin: 11px 0; }
+
+  .slider { display: grid; grid-template-columns: 1fr 44px; gap: 4px 8px; margin-bottom: 9px; }
+  .slider span { font-size: 11.5px; color: #9aa6b8; letter-spacing: .2px; }
+  .slider b { font-size: 11px; color: #ff8fb1; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .slider input[type=range] {
+    grid-column: 1 / -1; -webkit-appearance: none; appearance: none;
+    width: 100%; height: 4px; border-radius: 4px; outline: none;
+    background: #2b3240; cursor: pointer;
+  }
+  .slider input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+    background: #ff8fb1; border: 2px solid #1a1e26; cursor: pointer;
+    box-shadow: 0 0 8px #ff8fb166;
+  }
+  .slider input[type=range]::-moz-range-thumb {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #ff8fb1; border: 2px solid #1a1e26; cursor: pointer;
+  }
+
+  .meshlist { display: flex; flex-direction: column; gap: 3px; max-height: 170px; overflow-y: auto; }
+  .meshrow {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-radius: 7px; cursor: pointer;
+    background: rgba(255,255,255,.025); transition: .12s;
+  }
+  .meshrow:hover { background: rgba(255,255,255,.06); }
+  .meshrow.on { background: rgba(255,143,177,.12); }
+  .meshrow.disabled { opacity: .4; cursor: not-allowed; }
+  .meshrow input { accent-color: #ff8fb1; cursor: pointer; margin: 0; }
+  .meshrow span {
+    font-size: 11.5px; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; color: #b9c3d4;
+  }
+  .meshrow.on span { color: #ffd3e1; }
+
+  .hint { font-size: 10.5px; color: #6b7789; line-height: 1.5; margin-top: 10px; }
+  .hint b { color: #ff9dbb; font-weight: 600; }
+  .empty { font-size: 11px; color: #6b7789; font-style: italic; padding: 4px 2px; }
+
+  #tooltip {
+    position: fixed; pointer-events: none; display: none;
+    padding: 5px 9px; background: rgba(20,24,32,.94);
+    border: 1px solid rgba(255,143,177,.45); border-radius: 6px;
+    font-size: 11px; color: #fff; z-index: 100;
+    transform: translate(14px, 14px); white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0,0,0,.5);
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="tooltip"></div>
+
+<div id="panel">
+  <h1>🌸 <em>Jiggle</em> Physics</h1>
+
+  <div class="btnrow">
+    <label class="btn">Загрузить .glb<input type="file" id="file" accept=".glb,.gltf"></label>
+    <button class="btn" id="demoBtn">Демо</button>
+  </div>
+  <div class="btnrow">
+    <button class="btn" id="selectBtn">Режим выбора</button>
+    <button class="btn" id="resetBtn">Сброс</button>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="slider">
+    <span>Упругость</span><b id="vStiff">80</b>
+    <input type="range" id="stiff" min="10" max="400" step="1" value="80">
+  </div>
+  <div class="slider">
+    <span>Демпфирование</span><b id="vDamp">0.25</b>
+    <input type="range" id="damp" min="0.02" max="1" step="0.01" value="0.25">
+  </div>
+  <div class="slider">
+    <span>Инерция</span><b id="vInert">1.00</b>
+    <input type="range" id="inert" min="0" max="3" step="0.05" value="1">
+  </div>
+  <div class="slider">
+    <span>Гравитация</span><b id="vGrav">5.0</b>
+    <input type="range" id="grav" min="0" max="20" step="0.5" value="5">
+  </div>
+  <div class="slider">
+    <span>Макс. смещение</span><b id="vMaxo">0.15</b>
+    <input type="range" id="maxo" min="0.02" max="1.5" step="0.01" value="0.15">
+  </div>
+  <div class="slider">
+    <span>Радиус влияния</span><b id="vInfl">0.55</b>
+    <input type="range" id="infl" min="0.1" max="2" step="0.05" value="0.55">
+  </div>
+
+  <div class="sep"></div>
+
+  <div id="meshList" class="meshlist"><div class="empty">Модель не загружена</div></div>
+
+  <div class="hint">
+    <b>Тяни мышкой</b> по мешу с галочкой.<br>
+    Для одежды/тела включай физику на обоих, но начинай с малых значений.
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+
+/* ============================================================
+   ПАРАМЕТРЫ
+   ============================================================ */
+const params = {
+  stiffness: 80,
+  damping:   0.25,
+  inertia:   1.0,
+  gravity:   5.0,
+  maxOffset: 0.15,
+  influence: 0.55,
+};
+
+const FIXED_DT       = 1 / 180;
+const MAX_SUBSTEPS   = 6;
+const GRAB_STIFF_MUL = 4.0;
+const GRAB_DAMP      = 0.6;
+const GRAB_RADIUS    = 0.35;
+const GRAB_MAX_MUL   = 2.0;
+const NORMAL_RECALC_EVERY = 3;
+
+/* ============================================================
+   СЦЕНА
+   ============================================================ */
+const canvas   = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0d0f14);
+scene.fog = new THREE.Fog(0x0d0f14, 8, 22);
+
+const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.01, 500);
+camera.position.set(0, 0.6, 4.2);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.minDistance = 0.3;
+controls.maxDistance = 40;
+controls.target.set(0, 0.15, 0);
+
+scene.add(new THREE.HemisphereLight(0xdfe9ff, 0x2a1f26, 1.35));
+const key = new THREE.DirectionalLight(0xffffff, 2.4); key.position.set(2.5, 3.5, 4); scene.add(key);
+const rim = new THREE.DirectionalLight(0x8fb4ff, 2.0); rim.position.set(-3.5, 1.2, -3); scene.add(rim);
+const fill = new THREE.DirectionalLight(0xffb0c8, 0.9); fill.position.set(0, -2, 3); scene.add(fill);
+
+/* ============================================================
+   ТЕМПОВЫЕ
+   ============================================================ */
+const _v1 = new THREE.Vector3();
+const _v2 = new THREE.Vector3();
+const _v3 = new THREE.Vector3();
+const _q  = new THREE.Quaternion();
+const _s  = new THREE.Vector3();
+
+function smoothstep(t) {
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  return t * t * (3 - 2 * t);
+}
+
+/* ============================================================
+   ГЛОБАЛЬНЫЙ ДРАЙВЕР (чтобы все меши качались синхронно)
+   ============================================================ */
+class GlobalDriver {
+  constructor() {
+    this.offset = new THREE.Vector3();
+    this.vel = new THREE.Vector3();
+    this.stiffness = 0;
+    this.damping = 0;
+    this.maxOffset = 0;
+    this.prevWorld = new THREE.Vector3();
+    this.ready = false;
+    this.enabled = false;
+  }
+
+  updateParams(avgSizeR) {
+    if (avgSizeR < 1e-6) avgSizeR = 1;
+    this.stiffness = params.stiffness / avgSizeR;
+    this.damping = 2 * Math.sqrt(this.stiffness) * params.damping;
+    this.maxOffset = params.maxOffset * avgSizeR;
+    this.stiffness = Math.max(1e-4, this.stiffness);
+    this.damping = Math.max(1e-4, this.damping);
+    this.maxOffset = Math.max(1e-4, this.maxOffset);
+  }
+
+  reset() {
+    this.offset.set(0, 0, 0);
+    this.vel.set(0, 0, 0);
+    this.ready = false;
+  }
+
+  step(dt, driverPos, worldQuat, worldScale) {
+    if (!this.enabled) return;
+
+    // Гравитация в локальном пространстве драйвера
+    _v1.set(0, -params.gravity, 0);
+    _q.copy(worldQuat).invert();
+    _v1.applyQuaternion(_q);
+    _v1.divideScalar(worldScale);
+
+    // Инерция
+    if (params.inertia > 0) {
+      if (!this.ready) {
+        this.prevWorld.copy(driverPos);
+        this.ready = true;
+      }
+      _v2.copy(driverPos).sub(this.prevWorld).divideScalar(dt);
+      this.prevWorld.copy(driverPos);
+
+      _v2.applyQuaternion(_q);
+      _v2.divideScalar(worldScale);
+      _v1.addScaledVector(_v2, -params.inertia * 3);
+    } else {
+      this.ready = true;
+    }
+
+    // Пружина
+    _v1.addScaledVector(this.offset, -this.stiffness);
+    _v1.addScaledVector(this.vel,    -this.damping);
+
+    this.vel.addScaledVector(_v1, dt);
+
+    const vmax = 60;
+    const v2 = this.vel.lengthSq();
+    if (v2 > vmax * vmax) this.vel.multiplyScalar(vmax / Math.sqrt(v2));
+
+    this.offset.addScaledVector(this.vel, dt);
+
+    const mo = this.maxOffset;
+    const o2 = this.offset.lengthSq();
+    if (o2 > mo * mo) this.offset.multiplyScalar(mo / Math.sqrt(o2));
+
+    // NaN guard
+    if (!Number.isFinite(this.offset.x + this.offset.y + this.offset.z +
+                        this.vel.x    + this.vel.y    + this.vel.z)) {
+      this.reset();
+    }
+  }
+}
+
+const globalDriver = new GlobalDriver();
+
+/* ============================================================
+   ФИЗИКА ОДНОГО МЕША
+   ============================================================ */
+class JiggleMesh {
+  constructor(mesh) {
+    this.mesh    = mesh;
+    this.enabled = false;
+    this.valid   = false;
+    this.frameCounter = 0;
+    try {
+      this._init();
+      this.valid = true;
+    } catch (e) {
+      console.warn('[jiggle] init failed:', mesh.name || '(unnamed)', e);
+    }
+  }
+
+  _init() {
+    const mesh = this.mesh;
+    if (!mesh.geometry || !mesh.geometry.attributes?.position) throw new Error('no geometry');
+
+    if (!mesh.userData.__jiggleCloned) {
+      mesh.geometry = mesh.geometry.clone();
+      mesh.userData.__jiggleCloned = true;
+
+      if (!mesh.geometry.index) {
+        try {
+          const merged = mergeVertices(mesh.geometry, 1e-4);
+          mesh.geometry = merged;
+        } catch (e) {
+          console.warn('[jiggle] mergeVertices failed', e);
+        }
+      }
+    }
+
+    const geo = mesh.geometry;
+    if (!geo.boundingSphere) geo.computeBoundingSphere();
+    const bs = geo.boundingSphere;
+    if (!bs || !Number.isFinite(bs.radius) || bs.radius < 1e-8) throw new Error('invalid bounds');
+
+    this.rest  = Float32Array.from(geo.attributes.position.array);
+    this.count = geo.attributes.position.count;
+    if (this.count < 3) throw new Error('too few vertices');
+
+    this.isSkinned = !!mesh.isSkinnedMesh;
+
+    this.sizeR = Math.max(1e-4, bs.radius);
+
+    mesh.updateWorldMatrix(true, true);
+    this.worldQuat  = new THREE.Quaternion();
+    this.worldScale = new THREE.Vector3();
+    this._updateTransform();
+
+    // Якорь: центр верхней шапки
+    let minY = Infinity, maxY = -Infinity;
+    for (let i = 0; i < this.count; i++) {
+      const y = this.rest[i * 3 + 1];
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    const height = Math.max(1e-6, maxY - minY);
+    const topBand = maxY - height * 0.15;
+
+    let ax = 0, ay = 0, az = 0, an = 0;
+    for (let i = 0; i < this.count; i++) {
+      const y = this.rest[i * 3 + 1];
+      if (y >= topBand) {
+        ax += this.rest[i * 3];
+        ay += this.rest[i * 3 + 1];
+        az += this.rest[i * 3 + 2];
+        an++;
+      }
+    }
+    if (an === 0) throw new Error('empty top band');
+    ax /= an; ay /= an; az /= an;
+
+    this.anchorLocal = new THREE.Vector3(ax, ay, az);
+    this.minY = minY;
+    this.maxY = maxY;
+
+    let maxD = 0;
+    for (let i = 0; i < this.count; i++) {
+      const dx = this.rest[i * 3]     - ax;
+      const dy = this.rest[i * 3 + 1] - ay;
+      const dz = this.rest[i * 3 + 2] - az;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (d > maxD) maxD = d;
+    }
+    if (maxD < 1e-8) throw new Error('degenerate anchor');
+    this.maxD = maxD;
+
+    this.weights = new Float32Array(this.count);
+    this._computeWeights();
+
+    // Захват
+    this.grabOffset = new THREE.Vector3();
+    this.grabVel    = new THREE.Vector3();
+    this.grabTarget = new THREE.Vector3();
+    this.grabWeights = null;
+    this.grabbing   = false;
+
+    this.grabStiff = 0;
+    this.grabDamping = 0;
+    this.grabMaxOffset = 0;
+
+    this.updateParams();
+  }
+
+  _updateTransform() {
+    let src = this.mesh;
+    if (this.mesh.isSkinnedMesh && this.mesh.parent) {
+      let p = this.mesh.parent;
+      while (p && p.isSkinnedMesh) p = p.parent;
+      if (p) src = p;
+    }
+    src.updateWorldMatrix(true, false);
+    src.matrixWorld.decompose(_v1, this.worldQuat, this.worldScale);
+
+    const sx = Math.abs(this.worldScale.x);
+    const sy = Math.abs(this.worldScale.y);
+    const sz = Math.abs(this.worldScale.z);
+    this.scale = (sx + sy + sz) / 3;
+    if (!Number.isFinite(this.scale) || this.scale < 1e-6) this.scale = 1;
+  }
+
+  // Гладкие веса + Laplacian smoothing по индексам
+  _computeWeights() {
+    const h = Math.max(1e-6, this.maxY - this.minY);
+    const ay = this.anchorLocal.y;
+    const infl = params.influence;
+
+    for (let i = 0; i < this.count; i++) {
+      const y = this.rest[i * 3 + 1];
+      let t = (ay - y) / h;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      let ty = Math.pow(t, Math.max(0.05, infl));
+      let w = smoothstep(ty);
+
+      // Мягкое радиальное подавление
+      const px = this.rest[i * 3]     - this.anchorLocal.x;
+      const pz = this.rest[i * 3 + 2] - this.anchorLocal.z;
+      const rad = Math.sqrt(px * px + pz * pz);
+      const radialR = Math.max(1e-6, this.maxD * Math.max(0.2, infl));
+      const rr = rad / radialR;
+      const radial = 1 - smoothstep(rr);
+      const combo = w * (0.35 + 0.65 * radial);
+      this.weights[i] = combo;
+    }
+
+    // Laplacian smoothing (3 итерации) по индексам геометрии
+    const geo = this.mesh.geometry;
+    if (geo.index) {
+      const index = geo.index.array;
+      const temp = new Float32Array(this.count);
+      const deg = new Uint32Array(this.count);
+
+      for (let iter = 0; iter < 3; iter++) {
+        temp.set(this.weights);
+        deg.fill(0);
+
+        // Собираем среднее по соседям
+        const acc = new Float32Array(this.count);
+        for (let f = 0; f < index.length; f += 3) {
+          const a = index[f], b = index[f + 1], c = index[f + 2];
+          acc[a] += temp[b] + temp[c]; deg[a] += 2;
+          acc[b] += temp[a] + temp[c]; deg[b] += 2;
+          acc[c] += temp[a] + temp[b]; deg[c] += 2;
+        }
+        for (let i = 0; i < this.count; i++) {
+          if (deg[i] > 0) {
+            const avg = acc[i] / deg[i];
+            this.weights[i] = this.weights[i] * 0.4 + avg * 0.6;
+          }
+        }
+      }
+    }
+  }
+
+  updateParams() {
+    if (!this.valid) return;
+    this.grabStiff   = (params.stiffness / this.sizeR) * GRAB_STIFF_MUL;
+    this.grabDamping = 2 * Math.sqrt(this.grabStiff) * GRAB_DAMP;
+    this.grabMaxOffset = params.maxOffset * this.sizeR * GRAB_MAX_MUL;
+  }
+
+  _reset() {
+    this.grabOffset.set(0,0,0);
+    this.grabVel.set(0,0,0);
+    this.grabTarget.set(0,0,0);
+    this.grabbing = false;
+  }
+
+  stepGrab(dt) {
+    const tx = this.grabbing ? this.grabTarget.x : 0;
+    const ty = this.grabbing ? this.grabTarget.y : 0;
+    const tz = this.grabbing ? this.grabTarget.z : 0;
+
+    const ax = (tx - this.grabOffset.x) * this.grabStiff - this.grabVel.x * this.grabDamping;
+    const ay = (ty - this.grabOffset.y) * this.grabStiff - this.grabVel.y * this.grabDamping;
+    const az = (tz - this.grabOffset.z) * this.grabStiff - this.grabVel.z * this.grabDamping;
+
+    this.grabVel.x += ax * dt;
+    this.grabVel.y += ay * dt;
+    this.grabVel.z += az * dt;
+
+    const vmax = this.sizeR * 40;
+    const v2 = this.grabVel.lengthSq();
+    if (v2 > vmax * vmax) this.grabVel.multiplyScalar(vmax / Math.sqrt(v2));
+
+    this.grabOffset.x += this.grabVel.x * dt;
+    this.grabOffset.y += this.grabVel.y * dt;
+    this.grabOffset.z += this.grabVel.z * dt;
+
+    const mo = this.grabMaxOffset;
+    const o2 = this.grabOffset.lengthSq();
+    if (o2 > mo * mo) this.grabOffset.multiplyScalar(mo / Math.sqrt(o2));
+  }
+
+  step(dt) {
+    if (!this.valid) return;
+    this._updateTransform();
+    this.stepGrab(dt);
+  }
+
+  beginGrab(vi) {
+    const n = this.count;
+    if (!this.grabWeights || this.grabWeights.length !== n) {
+      this.grabWeights = new Float32Array(n);
+    }
+
+    const px = this.rest[vi * 3], py = this.rest[vi * 3 + 1], pz = this.rest[vi * 3 + 2];
+    const r  = this.sizeR * GRAB_RADIUS;
+    const s2 = 2 * r * r;
+
+    for (let i = 0; i < n; i++) {
+      const dx = this.rest[i * 3]     - px;
+      const dy = this.rest[i * 3 + 1] - py;
+      const dz = this.rest[i * 3 + 2] - pz;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      let w = Math.exp(-d2 / s2);
+      const fw = this.weights[i];
+      this.grabWeights[i] = w * (0.3 + 0.7 * fw);
+    }
+
+    this.grabOffset.set(0,0,0);
+    this.grabVel.set(0,0,0);
+    this.grabTarget.set(0,0,0);
+  }
+
+  apply(globalOffset) {
+    if (!this.valid) return;
+
+    const posAttr = this.mesh.geometry.attributes.position;
+    const arr = posAttr.array;
+    const rest = this.rest;
+    const w = this.weights;
+    const gw = this.grabWeights;
+    const n = this.count;
+
+    // Локальное смещение от глобального драйвера
+    _v3.copy(globalOffset);
+    // Переводим из мира драйвера в локаль меша
+    _q.copy(this.worldQuat).invert();
+    _v3.applyQuaternion(_q);
+    _v3.divideScalar(this.scale);
+
+    const ox = _v3.x, oy = _v3.y, oz = _v3.z;
+    const gx = this.grabOffset.x, gy = this.grabOffset.y, gz = this.grabOffset.z;
+
+    if (!Number.isFinite(ox + oy + oz + gx + gy + gz)) return;
+
+    for (let i = 0; i < n; i++) {
+      const j = i * 3;
+      const ww = w[i];
+      const gg = gw ? gw[i] : 0;
+      arr[j]     = rest[j]     + ox * ww + gx * gg;
+      arr[j + 1] = rest[j + 1] + oy * ww + gy * gg;
+      arr[j + 2] = rest[j + 2] + oz * ww + gz * gg;
+    }
+
+    posAttr.needsUpdate = true;
+
+    if (this.mesh.geometry.index) {
+      this.frameCounter++;
+      if (this.frameCounter % NORMAL_RECALC_EVERY === 0) {
+        this.mesh.geometry.computeVertexNormals();
+      }
+    }
+  }
+
+  restore() {
+    if (!this.valid) return;
+    const posAttr = this.mesh.geometry.attributes.position;
+    posAttr.array.set(this.rest);
+    posAttr.needsUpdate = true;
+    if (this.mesh.geometry.index) {
+      this.mesh.geometry.computeVertexNormals();
+    }
+    this._reset();
+  }
+}
+
+/* ============================================================
+   МОДЕЛЬ
+   ============================================================ */
+const meshListEl = document.getElementById('meshList');
+const jiggleMap  = new Map();
+let meshEntries  = [];
+let currentModel = null;
+let animatedRoot = null;
+let mixer        = null;
+let allMeshes    = [];
+
+function disposeModel(root) {
+  const geos = new Set(), mats = new Set();
+  const addMat = m => { if (m) mats.add(m); };
+  root.traverse(o => {
+    if (o.isMesh) {
+      if (o.geometry) geos.add(o.geometry);
+      if (o.material) Array.isArray(o.material) ? o.material.forEach(addMat) : addMat(o.material);
+      if (o.userData.__origMat) {
+        const m = o.userData.__origMat;
+        Array.isArray(m) ? m.forEach(addMat) : addMat(m);
+      }
+    }
+  });
+  geos.forEach(g => g.dispose());
+  mats.forEach(m => {
+    for (const k in m) if (m[k]?.isTexture) m[k].dispose();
+    m.dispose();
+  });
+}
+
+function cancelGrab() {
+  if (!grab) return;
+  grab.jm.grabbing = false;
+  grab = null;
+  controls.enabled = true;
+}
+
+function setModel(root, autoSelectRe) {
+  cancelGrab();
+  if (hoveredMesh) { clearHighlight(hoveredMesh); hoveredMesh = null; }
+
+  if (currentModel) { scene.remove(currentModel); disposeModel(currentModel); }
+  jiggleMap.clear();
+  meshEntries = [];
+  meshListEl.innerHTML = '';
+  allMeshes = [];
+
+  currentModel = root;
+  scene.add(root);
+  root.updateMatrixWorld(true);
+
+  root.traverse(o => {
+    if (o.isMesh && o.geometry?.attributes?.position) allMeshes.push(o);
+  });
+
+  if (!allMeshes.length) {
+    meshListEl.innerHTML = '<div class="empty">В модели нет мешей</div>';
+    return;
+  }
+
+  for (const mesh of allMeshes) {
+    const name = mesh.name || `mesh_${meshEntries.length}`;
+    const auto = autoSelectRe ? autoSelectRe.test(name) : false;
+
+    const row = document.createElement('label');
+    row.className = 'meshrow' + (auto ? ' on' : '');
+
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = auto;
+
+    const span = document.createElement('span');
+    span.textContent = name;
+    span.title = name;
+
+    row.appendChild(input);
+    row.appendChild(span);
+    meshListEl.appendChild(row);
+
+    const entry = { mesh, checked: auto, row, input };
+    meshEntries.push(entry);
+
+    input.addEventListener('change', () => {
+      entry.checked = input.checked;
+      row.classList.toggle('on', input.checked);
+      refreshJiggles();
+    });
+  }
+
+  refreshJiggles();
+  fitCamera(root);
+}
+
+let avgSizeR = 1;
+
+function refreshJiggles() {
+  const selected = new Set(meshEntries.filter(e => e.checked).map(e => e.mesh.uuid));
+
+  for (const [uuid, jm] of jiggleMap) {
+    if (!selected.has(uuid)) {
+      if (grab && grab.jm === jm) cancelGrab();
+      if (jm.enabled) jm.restore();
+      jm.enabled = false;
+    }
+  }
+
+  let sumR = 0, cnt = 0;
+
+  for (const entry of meshEntries) {
+    if (!entry.checked) continue;
+
+    let jm = jiggleMap.get(entry.mesh.uuid);
+    if (!jm) {
+      jm = new JiggleMesh(entry.mesh);
+      jiggleMap.set(entry.mesh.uuid, jm);
+    }
+
+    if (!jm.valid) {
+      entry.input.checked = false;
+      entry.checked = false;
+      entry.row.classList.remove('on');
+      entry.row.classList.add('disabled');
+      entry.input.disabled = true;
+      continue;
+    }
+
+    jm.enabled = true;
+    jm.updateParams();
+    jm._computeWeights();
+    sumR += jm.sizeR; cnt++;
+  }
+
+  avgSizeR = cnt > 0 ? sumR / cnt : 1;
+  globalDriver.updateParams(avgSizeR);
+  globalDriver.enabled = (cnt > 0);
+  globalDriver.reset();
+}
+
+function fitCamera(obj) {
+  const box = new THREE.Box3().setFromObject(obj);
+  if (box.isEmpty()) return;
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const dist = (maxDim / (2 * Math.tan(camera.fov * Math.PI / 360))) * 1.55;
+  controls.target.copy(center);
+  camera.position.copy(center).add(new THREE.Vector3(0, size.y * 0.12, dist));
+  camera.near = Math.max(0.001, dist / 2000);
+  camera.far  = dist * 200;
+  camera.updateProjectionMatrix();
+  controls.update();
+}
+
+/* ============================================================
+   HIGHLIGHT
+   ============================================================ */
+const HOVER_COLOR = 0x5599ff;
+
+function setHighlight(mesh, colorHex) {
+  if (!mesh?.material) return;
+  if (!mesh.userData.__hlMat) {
+    const orig = mesh.material;
+    mesh.userData.__origMat = orig;
+    const clone = Array.isArray(orig) ? orig.map(m => m.clone()) : orig.clone();
+    mesh.material = clone;
+    mesh.userData.__hlMat = clone;
+  }
+  const arr = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  for (const m of arr) {
+    if (m.emissive) {
+      m.emissive.setHex(colorHex);
+      if (m.emissiveIntensity !== undefined) m.emissiveIntensity = 0.7;
+    }
+  }
+}
+
+function clearHighlight(mesh) {
+  if (!mesh?.userData.__hlMat) return;
+  const cur = mesh.material;
+  const arr = Array.isArray(cur) ? cur : [cur];
+  for (const m of arr) m.dispose();
+  mesh.material = mesh.userData.__origMat;
+  delete mesh.userData.__origMat;
+  delete mesh.userData.__hlMat;
+}
+
+/* ============================================================
+   ЗАХВАТ / ВЫБОР
+   ============================================================ */
+const raycaster = new THREE.Raycaster();
+const ndc       = new THREE.Vector2();
+const dragPlane = new THREE.Plane();
+const _gv = new THREE.Vector3();
+const _gt = new THREE.Vector3();
+const _gd = new THREE.Vector3();
+
+let grab = null;
+let selectMode = false;
+let hoveredMesh = null;
+let pointerInside = false;
+let lastNdc = new THREE.Vector2(-10, -10);
+
+const tooltip = document.getElementById('tooltip');
+
+function updateNdc(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.x =  ((e.clientX - r.left) / r.width)  * 2 - 1;
+  ndc.y = -((e.clientY - r.top)  / r.height) * 2 + 1;
+}
+
+function getVertexWorld(mesh, vi, out) {
+  const pos = mesh.geometry.attributes.position;
+  out.set(pos.getX(vi), pos.getY(vi), pos.getZ(vi));
+  if (mesh.isSkinnedMesh && mesh.skeleton) {
+    const fn = mesh.applyBoneTransform || mesh.boneTransform;
+    if (typeof fn === 'function') {
+      try { fn.call(mesh, vi, out); } catch (e) { /* fallback */ }
+    }
+  }
+  out.applyMatrix4(mesh.matrixWorld);
+  return out;
+}
+
+function toggleMeshPhysics(mesh) {
+  const entry = meshEntries.find(en => en.mesh === mesh);
+  if (!entry || entry.input.disabled) return;
+  entry.input.checked = !entry.input.checked;
+  entry.input.dispatchEvent(new Event('change'));
+}
+
+function onPointerDown(e) {
+  if (e.target !== renderer.domElement) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+  if (selectMode) {
+    if (grab) return;
+    updateNdc(e);
+    raycaster.setFromCamera(ndc, camera);
+    const hits = raycaster.intersectObjects(allMeshes, false);
+    if (hits.length) {
+      toggleMeshPhysics(hits[0].object);
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    return;
+  }
+
+  if (grab) return;
+
+  const meshes = [];
+  for (const jm of jiggleMap.values()) if (jm.enabled && jm.valid) meshes.push(jm.mesh);
+  if (!meshes.length) return;
+
+  updateNdc(e);
+  raycaster.setFromCamera(ndc, camera);
+  const hits = raycaster.intersectObjects(meshes, false);
+  if (!hits.length) return;
+
+  const hit  = hits[0];
+  const mesh = hit.object;
+  const jm   = jiggleMap.get(mesh.uuid);
+  if (!jm || !jm.enabled || !jm.valid) return;
+
+  const pos = mesh.geometry.attributes.position;
+  let vi = hit.face.a, bestD = Infinity;
+  for (const idx of [hit.face.a, hit.face.b, hit.face.c]) {
+    getVertexWorld(mesh, idx, _gv);
+    const d = _gv.distanceToSquared(hit.point);
+    if (d < bestD) { bestD = d; vi = idx; }
+  }
+
+  jm.beginGrab(vi);
+  jm.grabbing = true;
+  jm.grabTarget.set(0, 0, 0);
+
+  camera.getWorldDirection(_gd);
+  dragPlane.setFromNormalAndCoplanarPoint(_gd, hit.point);
+
+  grab = {
+    jm, mesh, vi,
+    pointerId: e.pointerId,
+    startWorld: hit.point.clone(),
+    startNdc: ndc.clone(),
+  };
+
+  controls.enabled = false;
+  renderer.domElement.setPointerCapture?.(e.pointerId);
+
+  e.preventDefault();
+  e.stopPropagation();
+}
+
+function onPointerMove(e) {
+  updateNdc(e);
+  lastNdc.copy(ndc);
+  pointerInside = true;
+
+  if (selectMode) {
+    tooltip.style.left = e.clientX + 'px';
+    tooltip.style.top  = e.clientY + 'px';
+  }
+
+  if (grab && e.pointerId === grab.pointerId) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}
+
+function onPointerUp(e) {
+  if (!grab || e.pointerId !== grab.pointerId) return;
+  grab.jm.grabbing = false;
+  grab = null;
+  controls.enabled = true;
+  renderer.domElement.releasePointerCapture?.(e.pointerId);
+  e.preventDefault();
+  e.stopPropagation();
+}
+
+window.addEventListener('pointerdown',  onPointerDown, { capture: true });
+window.addEventListener('pointermove',  onPointerMove, { capture: true });
+window.addEventListener('pointerup',    onPointerUp,   { capture: true });
+window.addEventListener('pointercancel', onPointerUp,  { capture: true });
+window.addEventListener('pointerleave', () => { pointerInside = false; });
+
+/* ============================================================
+   ДЕМО
+   ============================================================ */
+function buildDemo() {
+  const g = new THREE.Group();
+  g.name = 'demo';
+
+  const skin = new THREE.MeshStandardMaterial({ color: 0xffd9c4, roughness: 0.66, metalness: 0.02 });
+
+  const torso = new THREE.Mesh(new THREE.SphereGeometry(1, 56, 40), skin);
+  torso.scale.set(0.85, 1.28, 0.62);
+  torso.name = 'torso';
+  g.add(torso);
+
+  for (const side of [-1, 1]) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.385, 40, 30), skin.clone());
+    m.position.set(side * 0.345, 0.175, 0.455);
+    m.name = side < 0 ? 'breast_L' : 'breast_R';
+    g.add(m);
+  }
+  return g;
+}
+
+/* ============================================================
+   UI
+   ============================================================ */
+const fileInput = document.getElementById('file');
+const demoBtn   = document.getElementById('demoBtn');
+const selectBtn = document.getElementById('selectBtn');
+const resetBtn  = document.getElementById('resetBtn');
+
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  const loader = new GLTFLoader();
+
+  loader.load(url, (gltf) => {
+    URL.revokeObjectURL(url);
+    animatedRoot = null;
+    if (mixer) { mixer.stopAllAction(); mixer = null; }
+    if (gltf.animations?.length) {
+      mixer = new THREE.AnimationMixer(gltf.scene);
+      gltf.animations.forEach(clip => mixer.clipAction(clip).play());
+    }
+    setModel(gltf.scene, /breast|oppai|boob|bust|mune|chichi|tit|chest/i);
+  },
+  undefined,
+  (err) => {
+    URL.revokeObjectURL(url);
+    console.error(err);
+    alert('Не удалось загрузить файл.\n' + (err?.message || err));
+  });
+
+  fileInput.value = '';
+});
+
+demoBtn.addEventListener('click', () => {
+  if (mixer) { mixer.stopAllAction(); mixer = null; }
+  const demo = buildDemo();
+  setModel(demo, /breast/i);
+  animatedRoot = demo;
+});
+
+function setSelectMode(on) {
+  selectMode = on;
+  selectBtn.classList.toggle('active', on);
+  renderer.domElement.classList.toggle('selecting', on);
+  if (on && grab) cancelGrab();
+  if (!on) {
+    if (hoveredMesh) { clearHighlight(hoveredMesh); hoveredMesh = null; }
+    tooltip.style.display = 'none';
+  }
+}
+selectBtn.addEventListener('click', () => setSelectMode(!selectMode));
+
+resetBtn.addEventListener('click', () => {
+  globalDriver.reset();
+  for (const jm of jiggleMap.values()) if (jm.valid) jm.restore();
+});
+
+function bindSlider(id, labelId, key, fmt, after) {
+  const el  = document.getElementById(id);
+  const lab = document.getElementById(labelId);
+  const upd = () => {
+    params[key] = parseFloat(el.value);
+    lab.textContent = fmt(params[key]);
+    if (after) after();
+  };
+  el.addEventListener('input', upd);
+  upd();
+}
+
+bindSlider('stiff', 'vStiff', 'stiffness', v => v.toFixed(0),
+  () => { globalDriver.updateParams(avgSizeR); for (const jm of jiggleMap.values()) jm.updateParams(); });
+bindSlider('damp',  'vDamp',  'damping',   v => v.toFixed(2),
+  () => { globalDriver.updateParams(avgSizeR); for (const jm of jiggleMap.values()) jm.updateParams(); });
+bindSlider('inert', 'vInert', 'inertia',   v => v.toFixed(2),
+  () => { globalDriver.updateParams(avgSizeR); });
+bindSlider('grav',  'vGrav',  'gravity',   v => v.toFixed(1),
+  () => { globalDriver.updateParams(avgSizeR); });
+bindSlider('maxo',  'vMaxo',  'maxOffset', v => v.toFixed(2),
+  () => { globalDriver.updateParams(avgSizeR); for (const jm of jiggleMap.values()) jm.updateParams(); });
+bindSlider('infl',  'vInfl',  'influence', v => v.toFixed(2),
+  () => { for (const jm of jiggleMap.values()) if (jm.valid) jm._computeWeights(); });
+
+/* ============================================================
+   ЦИКЛ
+   ============================================================ */
+const clock = new THREE.Clock();
+let accumulator = 0;
+
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(Math.max(clock.getDelta(), 0), 0.1);
+  const t  = clock.elapsedTime;
+
+  if (mixer) mixer.update(dt);
+
+  if (animatedRoot) {
+    animatedRoot.position.x = Math.sin(t * 2.4) * 0.13;
+    animatedRoot.position.y = Math.sin(t * 3.1) * 0.06;
+    animatedRoot.rotation.z = Math.sin(t * 2.0) * 0.09;
+    animatedRoot.rotation.x = Math.sin(t * 1.7) * 0.05;
+  }
+
+  scene.updateMatrixWorld(true);
+
+  // Обновляем глобальный драйвер (центр модели)
+  if (currentModel && globalDriver.enabled) {
+    _v1.setFromMatrixPosition(currentModel.matrixWorld);
+    globalDriver.updateParams(avgSizeR);
+    // Используем мировую ориентацию модели и средний масштаб
+    _s.set(1, 1, 1);
+    currentModel.matrixWorld.decompose(_v2, _q, _s);
+    globalDriver.step(dt, _v1, _q, (_s.x + _s.y + _s.z) / 3 || 1);
+  }
+
+  if (grab) {
+    const jm = grab.jm;
+    if (!jm.valid) { cancelGrab(); }
+    else {
+      raycaster.setFromCamera(lastNdc, camera);
+      if (raycaster.ray.intersectPlane(dragPlane, _gt)) {
+        _gd.copy(_gt).sub(grab.startWorld);
+        _q.copy(jm.worldQuat).invert();
+        _gd.applyQuaternion(_q);
+        _gd.divideScalar(jm.scale);
+        const maxPull = jm.sizeR * GRAB_MAX_MUL;
+        if (_gd.lengthSq() > maxPull * maxPull) _gd.setLength(maxPull);
+        jm.grabTarget.copy(_gd);
+      }
+    }
+  }
+
+  if (selectMode && pointerInside) {
+    raycaster.setFromCamera(lastNdc, camera);
+    const hits = raycaster.intersectObjects(allMeshes, false);
+    const newHover = hits.length ? hits[0].object : null;
+
+    if (newHover !== hoveredMesh) {
+      if (hoveredMesh) clearHighlight(hoveredMesh);
+      if (newHover)    setHighlight(newHover, HOVER_COLOR);
+      hoveredMesh = newHover;
+    }
+
+    if (hoveredMesh) {
+      const entry = meshEntries.find(en => en.mesh === hoveredMesh);
+      const state = entry?.input.disabled
+        ? '⚠ физика недоступна'
+        : (entry?.checked ? '✓ физика вкл' : '✗ физика выкл');
+      tooltip.textContent = (hoveredMesh.name || '(без имени)') + ' — ' + state;
+      tooltip.style.display = 'block';
+    } else {
+      tooltip.style.display = 'none';
+    }
+  } else if (tooltip.style.display === 'block') {
+    tooltip.style.display = 'none';
+  }
+
+  accumulator += dt;
+  let steps = 0;
+  while (accumulator >= FIXED_DT && steps < MAX_SUBSTEPS) {
+    for (const jm of jiggleMap.values()) if (jm.enabled && jm.valid) jm.step(FIXED_DT);
+    accumulator -= FIXED_DT;
+    steps++;
+  }
+  if (steps >= MAX_SUBSTEPS) accumulator = 0;
+
+  for (const jm of jiggleMap.values()) if (jm.enabled && jm.valid) jm.apply(globalDriver.offset);
+
+  controls.update();
+  renderer.render(scene, camera);
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+demoBtn.click();
+</script>
+</body>
+</html>
